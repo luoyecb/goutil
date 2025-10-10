@@ -24,6 +24,10 @@ func (f *Future) Index() int {
 	return f.index
 }
 
+func (f *Future) Input() interface{} {
+	return f.input
+}
+
 func (f *Future) Err() error {
 	return f.err
 }
