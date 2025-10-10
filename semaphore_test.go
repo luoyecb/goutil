@@ -6,6 +6,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func ConcurrentRun(fn func() error, concurrent int) chan struct{} {
+	return make(chan struct{}, 1)
+}
+
 func TestSemaphore(t *testing.T) {
 	assert := assert.New(t)
 
