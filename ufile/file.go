@@ -61,7 +61,6 @@ func WalkDir(dir string, fn func(name string, isDir bool), ignores ...string) er
 	if err != nil {
 		return err
 	}
-
 	if fn == nil {
 		return nil
 	}
@@ -71,12 +70,19 @@ func WalkDir(dir string, fn func(name string, isDir bool), ignores ...string) er
 		if fname == "" || fname[0] == '.' { // ignore "." ".."
 			continue
 		}
-		for _, ignore := range ignores { // ignore ignores
-			if fname == ignore {
-				continue
-			}
+		if InStrSlice(ignores, fname) { // ignore ignores
+			continue
 		}
 		fn(fname, entry.IsDir())
 	}
 	return nil
+}
+
+func InStrSlice(slice []string, s string) bool {
+	for _, elem := range slice {
+		if s == elem {
+			return true
+		}
+	}
+	return false
 }
