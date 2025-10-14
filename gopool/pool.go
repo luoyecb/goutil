@@ -2,7 +2,6 @@ package gopool
 
 import (
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 )
@@ -13,119 +12,13 @@ var (
 	ErrNoCallback = errors.New("No callback")
 )
 
-// ========================================
-// Runner
-// ========================================
-type Runner interface {
-	Run()
-}
-
-type PoolFunc func()
-
-func (pf PoolFunc) Run() {
-	pf()
-}
-
-type Callback struct {
-	input interface{}
-	fn    func(interface{})
-}
-
-func (c *Callback) Run() {
-	c.fn(c.input)
-}
-
-// ========================================
-// Job
-// ========================================
-type Job struct {
-	r      Runner
-	err    error
-	doneCh chan struct{}
-}
-
-func NewJob(r Runner) *Job {
-	return &Job{
-		r:      r,
-		doneCh: make(chan struct{}),
-	}
-}
-
-func (j *Job) notify(err error) {
-	j.err = err
-	close(j.doneCh)
-}
-
-func (j *Job) Err() error {
-	return j.err
-}
-
-func (j *Job) Wait() {
-	<-j.doneCh
-}
-
-// ========================================
-// worker
-// ========================================
-type worker struct {
-	runChan chan *Job
-	stop    chan struct{}
-	wg      sync.WaitGroup
-}
-
-func newWorker(ch chan *Job) *worker {
-	w := &worker{
-		runChan: ch,
-		stop:    make(chan struct{}),
-	}
-	w.wg.Add(1)
-	go w.run()
-	return w
-}
-
-func (w *worker) run() {
-	defer w.wg.Done()
-
-	for {
-		select {
-		case job, ok := <-w.runChan:
-			if !ok {
-				return
-			}
-			job.notify(callRunner(job.r))
-		case <-w.stop:
-			return // exit
-		}
-	}
-}
-
-func callRunner(r Runner) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("panic recovered! err: %v\n", err)
-		}
-	}()
-	r.Run()
-	return
-}
-
-func (w *worker) close() {
-	close(w.stop)
-}
-
-func (w *worker) wait() {
-	w.wg.Wait()
-}
-
-// ========================================
-// Pool
-// ========================================
 type Pool struct {
 	runChan  chan *Job
 	callback func(interface{})
 	workers  []*worker
 
-	closed bool
+	closed  bool
+	closeMu sync.Mutex
 }
 
 func NewPool(maxGoroutines, queueCap int) *Pool {
@@ -141,26 +34,6 @@ func NewPoolCallback(maxGoroutines, queueCap int, cb func(interface{})) *Pool {
 		p.workers = append(p.workers, newWorker(p.runChan))
 	}
 	return p
-}
-
-func (p *Pool) Close() {
-	if p.closed {
-		return
-	}
-	p.closed = true
-
-	for _, w := range p.workers {
-		w.close()
-	}
-
-	close(p.runChan)
-	for job := range p.runChan {
-		job.notify(ErrPoolClosed)
-	}
-
-	for _, w := range p.workers {
-		w.wait()
-	}
 }
 
 func (p *Pool) SubmitFunc(fn func()) (*Job, error) {
@@ -197,4 +70,27 @@ func (p *Pool) SubmitTimeout(r Runner, timeoutMilli int) (job *Job, err error) {
 		}
 	}
 	return job, nil
+}
+
+func (p *Pool) Close() {
+	p.closeMu.Lock()
+	if p.closed {
+		p.closeMu.Unlock()
+		return
+	}
+	p.closed = true
+	p.closeMu.Unlock()
+
+	for _, w := range p.workers {
+		w.close()
+	}
+
+	close(p.runChan)
+	for job := range p.runChan {
+		job.notify(ErrPoolClosed)
+	}
+
+	for _, w := range p.workers {
+		w.wait()
+	}
 }
