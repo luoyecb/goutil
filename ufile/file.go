@@ -39,21 +39,20 @@ func JoinPath(paths ...string) string {
 // CopyFile
 // src must exists
 // dst must not exists
-func CopyFile(src, dst string) error {
+func CopyFile(src, dst string) (int64, error) {
 	inFile, err := os.Open(src)
 	if err != nil {
-		return err
+		return -1, err
 	}
 	defer inFile.Close()
 
 	outFile, err := os.Create(dst)
 	if err != nil {
-		return err
+		return -1, err
 	}
 	defer outFile.Close()
 
-	_, err = io.Copy(outFile, inFile)
-	return err
+	return io.Copy(outFile, inFile)
 }
 
 func WalkDir(dir string, fn func(name string, isDir bool), ignores ...string) error {
