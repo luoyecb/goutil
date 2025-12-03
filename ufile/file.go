@@ -3,6 +3,7 @@ package ufile
 import (
 	"bytes"
 	"io"
+	"io/fs"
 	"os"
 )
 
@@ -60,19 +61,35 @@ func WalkDir(dir string, fn func(name string, isDir bool), ignores ...string) er
 	if err != nil {
 		return err
 	}
-	if fn == nil {
-		return nil
+	if fn != nil {
+		for _, entry := range entrys {
+			fname := entry.Name()
+			if fname == "" || fname[0] == '.' || InStrSlice(ignores, fname) { // ignore "." ".." ignores
+				continue
+			}
+			fn(fname, entry.IsDir())
+		}
 	}
+	return nil
+}
 
-	for _, entry := range entrys {
-		fname := entry.Name()
-		if fname == "" || fname[0] == '.' { // ignore "." ".."
-			continue
+func WalkDirFileInfo(dir string, fn func(name string, isDir bool, fileinfo fs.FileInfo), ignores ...string) error {
+	entrys, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	if fn != nil {
+		for _, entry := range entrys {
+			fname := entry.Name()
+			if fname == "" || fname[0] == '.' || InStrSlice(ignores, fname) { // ignore "." ".." ignores
+				continue
+			}
+			finfo, err := entry.Info()
+			if err != nil { // ignore err
+				finfo = nil
+			}
+			fn(fname, entry.IsDir(), finfo)
 		}
-		if InStrSlice(ignores, fname) { // ignore ignores
-			continue
-		}
-		fn(fname, entry.IsDir())
 	}
 	return nil
 }
