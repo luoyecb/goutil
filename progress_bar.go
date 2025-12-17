@@ -59,7 +59,7 @@ func NewProgressBarStyle(st *Style) *ProgressBar {
 		totalChars:     100,
 		style:          st,
 		tickerDuration: time.Second,
-		stop:           make(chan bool),
+		// stop:           make(chan bool),
 	}
 }
 
@@ -76,7 +76,7 @@ func (b *ProgressBar) Report(percent int) {
 }
 
 func (b *ProgressBar) Start() {
-	b.Reset()
+	b.reset()
 
 	b.start = time.Now()
 	if b.ticker == nil {
@@ -97,10 +97,12 @@ func (b *ProgressBar) Start() {
 	}()
 }
 
-func (b *ProgressBar) Reset() {
+func (b *ProgressBar) reset() {
 	b.mu.Lock()
 	b.percent = 0
 	b.mu.Unlock()
+
+	b.stop = make(chan bool)
 }
 
 func (b *ProgressBar) printProgress() {
@@ -118,6 +120,7 @@ func (b *ProgressBar) Stop() {
 	close(b.stop)
 	if b.ticker != nil {
 		b.ticker.Stop()
+		b.ticker = nil
 	}
 	b.printProgress()
 	fmt.Println()
