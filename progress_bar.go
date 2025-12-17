@@ -34,16 +34,18 @@ func (s *Style) String(leftCnt, rightCnt int) string {
 }
 
 type ProgressBar struct {
-	percent int
-	mu      sync.Mutex
+	mu sync.Mutex
 
-	totalChars int
+	percent    int // [0-100]
+	totalChars int // default: 100
 	style      *Style
 
 	start          time.Time
 	ticker         *time.Ticker
 	tickerDuration time.Duration
-	stop           chan bool // receive stop signal
+
+	stoped   bool
+	stopChan chan bool // receive stop signal
 }
 
 func NewProgressBar() *ProgressBar {
@@ -59,7 +61,8 @@ func NewProgressBarStyle(st *Style) *ProgressBar {
 		totalChars:     100,
 		style:          st,
 		tickerDuration: time.Second,
-		// stop:           make(chan bool),
+		stoped:         true,
+		// stopChan:           make(chan bool),
 	}
 }
 
@@ -75,33 +78,33 @@ func (b *ProgressBar) Report(percent int) {
 	b.percent = percent
 }
 
+func (b *ProgressBar) reset() {
+	b.percent = 0
+	b.stopChan = make(chan bool)
+	b.start = time.Now()
+	b.ticker = time.NewTicker(b.tickerDuration)
+}
+
 func (b *ProgressBar) Start() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if !b.stoped {
+		return // not stoped
+	}
 	b.reset()
 
-	if b.ticker == nil {
-		b.ticker = time.NewTicker(b.tickerDuration)
-	} else {
-		b.ticker.Reset(b.tickerDuration)
-	}
 	go func() {
 		for {
 			select {
 			case <-b.ticker.C:
 				b.printProgress()
-			case <-b.stop:
+			case <-b.stopChan:
 				return
 			}
 		}
 	}()
-}
-
-func (b *ProgressBar) reset() {
-	b.mu.Lock()
-	b.percent = 0
-	b.mu.Unlock()
-
-	b.stop = make(chan bool)
-	b.start = time.Now()
+	b.stoped = false
 }
 
 func (b *ProgressBar) printProgress() {
@@ -116,19 +119,18 @@ func (b *ProgressBar) printProgress() {
 }
 
 func (b *ProgressBar) Stop() {
-	if b.stop == nil {
-		return // no start
+	b.mu.Lock()
+	if b.stoped {
+		return // has stoped
 	}
-	_, ok := <-b.stop
-	if !ok {
-		return // has closed
-	}
-	close(b.stop)
 
-	if b.ticker != nil {
-		b.ticker.Stop()
-		b.ticker = nil
-	}
+	close(b.stopChan)
+	b.ticker.Stop()
+	b.ticker = nil
+	b.stoped = true
+
+	b.mu.Unlock()
+
 	b.printProgress()
 	fmt.Println()
 }
