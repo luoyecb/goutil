@@ -2,16 +2,25 @@ package alignment
 
 import (
 	"bufio"
-	"bytes"
 	"strings"
 )
 
 type Alignment struct {
-	sep string
+	sep          string
+	isWhiteSpace bool
+	linePrefix   string
 }
 
 func NewAlignment(sep string) *Alignment {
-	return &Alignment{sep}
+	return NewAlignment2(sep, "")
+}
+
+func NewAlignment2(sep string, prefix string) *Alignment {
+	return &Alignment{
+		sep:          sep,
+		isWhiteSpace: strings.TrimSpace(sep) == "",
+		linePrefix:   prefix,
+	}
 }
 
 func (a *Alignment) Format(text string) string {
@@ -19,64 +28,78 @@ func (a *Alignment) Format(text string) string {
 		return ""
 	}
 
-	var buf bytes.Buffer
+	var builder strings.Builder
 	lines := []string{}
 
-	scanner := bufio.NewScanner(strings.NewReader(text))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+	err := a.ForeachLine(text, func(line string) {
 		if line != "" {
 			lines = append(lines, line)
-			continue
+			return
 		}
 		// 按照空行分隔为多块处理
 		if len(lines) > 0 {
-			buf.WriteString(a.format(lines))
-			buf.WriteByte('\n')
+			builder.WriteString(a.FormatLines(lines))
 			lines = []string{}
+			builder.WriteString("\n\n") // 前面不是空行，输出2个'\n'
 		} else {
-			buf.WriteByte('\n')
+			builder.WriteByte('\n') // 前面是空行，当前也是空行，输出1个'\n'
 		}
-	}
-	if len(lines) > 0 {
-		buf.WriteString(a.format(lines))
-	}
-	if scanner.Err() != nil {
+	})
+	if err != nil {
 		return text
 	}
-
-	return buf.String()
+	if len(lines) > 0 {
+		builder.WriteString(a.FormatLines(lines))
+		if text[len(text)-1] == '\n' {
+			// if a.charIs(text, len(text)-1, '\n') {
+			builder.WriteByte('\n') // 保留最后的'\n'
+		}
+	}
+	return builder.String()
 }
 
-func (a *Alignment) format(lines []string) string {
+func (a *Alignment) charIs(s string, index int, ch byte) bool {
+	return s[index] == ch
+}
+
+func (a *Alignment) ForeachLine(text string, fn func(string)) error {
+	r := strings.NewReader(text)
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		fn(strings.TrimSpace(scanner.Text()))
+	}
+	return scanner.Err()
+}
+
+func (a *Alignment) FormatLines(lines []string) string {
 	maxP1Len := 0
-	sepLen := len(a.sep)
 	content := make([]*Line, 0, len(lines))
-
 	for _, line := range lines {
-		var aLine *Line
-		var p1 string
-
-		if index := strings.Index(line, a.sep); index == -1 {
-			p1 = strings.TrimSpace(line)
-			aLine = NewLine(p1, "", false, a)
-		} else {
-			p1 = strings.TrimSpace(line[:index])
-			aLine = NewLine(p1, strings.TrimSpace(line[index+sepLen:]), true, a)
-		}
+		p1, p2, hasSep := a.split(line, a.sep)
 		if len(p1) > maxP1Len {
 			maxP1Len = len(p1)
 		}
-
-		content = append(content, aLine)
+		content = append(content, NewLine(p1, p2, hasSep, a))
 	}
 
-	var buf bytes.Buffer
-	for _, l := range content {
-		buf.WriteString(l.format(maxP1Len))
-		buf.WriteByte('\n')
+	var builder strings.Builder
+	end := len(content) - 1
+	for index, line := range content {
+		builder.WriteString(line.format(maxP1Len))
+		if index < end {
+			builder.WriteByte('\n')
+		}
 	}
-	return buf.String()
+	return builder.String()
+}
+
+func (a *Alignment) split(s, sep string) (string, string, bool) {
+	index := strings.Index(s, sep)
+	if index == -1 {
+		return strings.TrimSpace(s), "", false
+	} else {
+		return strings.TrimSpace(s[:index]), strings.TrimSpace(s[index+len(sep):]), true
+	}
 }
 
 type Line struct {
@@ -95,15 +118,23 @@ func (l *Line) format(maxsize int) string {
 		return l.p1
 	}
 
-	var buf bytes.Buffer
-
-	buf.WriteString(l.p1)
-	for i := maxsize - len(l.p1); i >= 0; i-- {
-		buf.WriteByte(' ')
+	var builder strings.Builder
+	// prefix
+	builder.WriteString(l.align.linePrefix)
+	// p1
+	builder.WriteString(l.p1)
+	for i := maxsize - len(l.p1); i > 0; i-- {
+		builder.WriteByte(' ')
 	}
-	buf.WriteString(l.align.sep)
-	buf.WriteByte(' ')
-	buf.WriteString(l.p2)
-
-	return buf.String()
+	// sep
+	if !l.align.isWhiteSpace {
+		builder.WriteByte(' ')
+	}
+	builder.WriteString(l.align.sep)
+	if !l.align.isWhiteSpace {
+		builder.WriteByte(' ')
+	}
+	// p2
+	builder.WriteString(l.p2)
+	return builder.String()
 }

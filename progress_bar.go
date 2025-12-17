@@ -43,21 +43,23 @@ type ProgressBar struct {
 	start          time.Time
 	ticker         *time.Ticker
 	tickerDuration time.Duration
+	stop           chan bool // receive stop signal
 }
 
 func NewProgressBar() *ProgressBar {
-	return &ProgressBar{
-		totalChars:     100,
-		style:          NewStyle("#", "", " "),
-		tickerDuration: time.Second,
-	}
+	return NewProgressBarStyle(NewStyle("#", "", " "))
 }
 
 func NewProgressBar2() *ProgressBar {
+	return NewProgressBarStyle(NewStyle("=", ">", "-"))
+}
+
+func NewProgressBarStyle(st *Style) *ProgressBar {
 	return &ProgressBar{
 		totalChars:     100,
-		style:          NewStyle("=", ">", "-"),
+		style:          st,
 		tickerDuration: time.Second,
+		stop:           make(chan bool),
 	}
 }
 
@@ -74,16 +76,31 @@ func (b *ProgressBar) Report(percent int) {
 }
 
 func (b *ProgressBar) Start() {
+	b.Reset()
+
 	b.start = time.Now()
-	b.ticker = time.NewTicker(b.tickerDuration)
+	if b.ticker == nil {
+		b.ticker = time.NewTicker(b.tickerDuration)
+	} else {
+		b.ticker.Reset(b.tickerDuration)
+	}
+
 	go func() {
 		for {
 			select {
 			case <-b.ticker.C:
 				b.printProgress()
+			case <-b.stop:
+				return
 			}
 		}
 	}()
+}
+
+func (b *ProgressBar) Reset() {
+	b.mu.Lock()
+	b.percent = 0
+	b.mu.Unlock()
 }
 
 func (b *ProgressBar) printProgress() {
@@ -98,6 +115,7 @@ func (b *ProgressBar) printProgress() {
 }
 
 func (b *ProgressBar) Stop() {
+	close(b.stop)
 	if b.ticker != nil {
 		b.ticker.Stop()
 	}

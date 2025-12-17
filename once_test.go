@@ -6,18 +6,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// test:TestOnce
 func TestOnce(t *testing.T) {
 	assert := assert.New(t)
 
-	once := NewOnce()
 	cnt := 0
+	once := NewOnce()
 
-	ch := ConcurrentRun(func() error {
+	ch := ConcurrentRun(func() {
 		once.Do(func() {
 			cnt++
 		})
-
-		return nil
 	}, 10000)
 	<-ch
 
@@ -27,15 +26,13 @@ func TestOnce(t *testing.T) {
 func TestOnce2(t *testing.T) {
 	assert := assert.New(t)
 
-	var once Once2
 	cnt := 0
+	var once Once2
 
-	ch := ConcurrentRun(func() error {
+	ch := ConcurrentRun(func() {
 		once.Do(func() {
 			cnt++
 		})
-
-		return nil
 	}, 10000)
 	<-ch
 

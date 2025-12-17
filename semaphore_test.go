@@ -6,26 +6,21 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func ConcurrentRun(fn func() error, concurrent int) chan struct{} {
-	return make(chan struct{}, 1)
-}
-
+// test:TestSemaphore
 func TestSemaphore(t *testing.T) {
 	assert := assert.New(t)
 
-	sem := NewSemaphore(1)
-
 	sum := 0
 	cnt := 10000
-	concurrent := 10
+	sem := NewSemaphore(1)
 
-	ch := ConcurrentRun(func() error {
+	concurrent := 10
+	ch := ConcurrentRun(func() {
 		for i := 0; i < cnt; i++ {
 			sem.Accquire()
 			sum++
 			sem.Release()
 		}
-		return nil
 	}, concurrent)
 	<-ch
 
