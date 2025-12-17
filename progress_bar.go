@@ -78,13 +78,11 @@ func (b *ProgressBar) Report(percent int) {
 func (b *ProgressBar) Start() {
 	b.reset()
 
-	b.start = time.Now()
 	if b.ticker == nil {
 		b.ticker = time.NewTicker(b.tickerDuration)
 	} else {
 		b.ticker.Reset(b.tickerDuration)
 	}
-
 	go func() {
 		for {
 			select {
@@ -103,6 +101,7 @@ func (b *ProgressBar) reset() {
 	b.mu.Unlock()
 
 	b.stop = make(chan bool)
+	b.start = time.Now()
 }
 
 func (b *ProgressBar) printProgress() {
@@ -117,7 +116,15 @@ func (b *ProgressBar) printProgress() {
 }
 
 func (b *ProgressBar) Stop() {
+	if b.stop == nil {
+		return // no start
+	}
+	_, ok := <-b.stop
+	if !ok {
+		return // has closed
+	}
 	close(b.stop)
+
 	if b.ticker != nil {
 		b.ticker.Stop()
 		b.ticker = nil
